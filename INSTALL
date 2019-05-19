@@ -1,0 +1,174 @@
+This file contains instructions on how to build the KiWi C++ priority queue project.
+Follow the steps below and you'll do just fine, be patient and grab a cup of coffee =D
+
+#
+# Step 0: prerequisites
+#
+You need a Ubuntu 16.04 or greater.
+
+sudo apt-get install \
+    g++ \
+    cmake \
+    libboost-all-dev \
+    libevent-dev \
+    libdouble-conversion-dev \
+    libgoogle-glog-dev \
+    libgflags-dev \
+    libiberty-dev \
+    liblz4-dev \
+    liblzma-dev \
+    libsnappy-dev \
+    make \
+    zlib1g-dev \
+    binutils-dev \
+    libjemalloc-dev \
+    libssl-dev \
+    pkg-config
+
+#
+# Create a working space for all projects that we build.
+#
+mkdir project-kiwi
+cd project-kiwi
+
+#
+# Optional: needed on rack-mad machines only (due to old CMake).
+#
+mkdir cmake
+cd cmake
+wget https://github.com/Kitware/CMake/releases/download/v3.14.0-rc2/cmake-3.14.0-rc2.tar.gz
+tar zxvf cmake-3.14.0-rc2.tar.gz
+cd cmake-3.14.0-rc2
+./bootstrap
+
+set NUM_CPUS=`grep -c processor /proc/cpuinfo`
+gmake -j$NUM_CPUS
+gmake install -j$NUM_CPUS DESTDIR=`readlink -f ./install`
+
+mkdir $HOME/tools
+cp bin/cmake $HOME/tools
+setenv PATH `readlink -f ./install/usr/local/bin`:$PATH
+cd ../../
+
+#
+# Step 1: clone and build folly
+#
+git clone https://ofirc@github.com/ofirc/folly.git
+cd folly
+
+#
+# Optional: setenv below are needed only on rack-mad machines.
+#
+setenv PATH /usr/local/bin:$PATH
+setenv CC gcc-5.3.0
+setenv CXX g++-5.3.0
+
+# Create a build directory.
+mkdir my_build
+cd my_build
+
+# This will build folly in my_build/ and put all install artifacts
+# into: my_build/install.
+./build.sh
+cd ..
+
+
+#
+# Optiona: Step 1.5: build glog from sources (needed only on rack-mad machines)
+#
+git clone https://github.com/google/glog.git -b v035
+./configure
+make -j8
+# After the make step, you'll get some errors from the tests.
+# The best way to handle it is to comment out all code in the cpp file in the tests.
+make install DESTDIR=`readlink -f install`
+
+
+#
+# Step 2: clone and build KiWi C++
+#
+git clone https://ofircohenn@bitbucket.org/dvirginz/kiwi-pq-cpp-port.git
+cd kiwi-pq-cpp-port
+ln -s ../folly/my_build/install folly
+./build.sh
+
+cd build
+
+#
+# Sanity check.
+#
+# Optional: on rack-mad-* machines do the following:
+setenv LD_LIBRARY_PATH /usr/local/lib/gcc-5.3.0/lib64:$LD_LIBRARY_PATH
+
+# Now run the executable, it should run to completion without crashing
+# and return 0 to the shell.
+./KiWi_cpp_pq_port
+echo $?
+
+#
+# Step 3: clone and build Galois
+#
+cd ../../
+git clone https://ofircohenn@bitbucket.org/ofircohenn/galois.git
+cd galois
+
+# Install TBB prerequisite.
+mkdir tbb
+cd tbb
+wget https://github.com/01org/tbb/archive/2019_U3.zip
+unzip 2019_U3.zip
+cd tbb-2019_U3
+make -j$(grep -c processor /proc/cpuinfo)
+
+#
+# Link folly.
+#
+cd ../../
+ln -s ../folly/my_build/install folly
+
+# Yes, run it twice!  (~ the voodoo police =D ~)
+./build.sh
+./build.sh
+
+
+#
+# Step 4: run Galois on benchmarks
+#
+# Note: if you are working on your own local machine, you may have to set the huge pages:
+# echo 10000 | sudo tee /proc/sys/vm/nr_hugepages
+#
+cd /specific/disk1/home/mad/Galois-PQ/inputs/students/ofirc1/galois/
+
+# On rack-mad-* machines (or any machines with c shells) do the following:
+# This will allow us generating core dumps.
+setenv LD_LIBRARY_PATH /usr/local/lib/gcc-5.3.0/lib64
+limit coredumpsize 40000000
+
+# Otherwise, on bash shells do the ofllowing:
+ulimit -c unlimited
+
+# KiWi
+time ./build/default/apps/sssp/sssp -noverify -t 12 -delta 8 -wl kiwi -startNode 0 /specific/disk1/home/mad/Galois-PQ/inputs/ljournal-2008.gr
+
+
+# OBIM
+time ./build/default/apps/sssp/sssp -noverify -t 12 -delta 8 -wl obim -startNode 0 /specific/disk1/home/mad/Galois-PQ/inputs/ljournal-2008.gr
+
+# Or on non-TAU machines:
+./build/default/apps/sssp/sssp -t 12 -delta 8 -wl kiwi -startNode 0 ./inputs/structured/srome99.gr
+
+inputs/USA-road-d.CAL.gr
+inputs/structured/srome99.gr
+
+
+#
+# Misc notes.
+#
+
+# Extra Quota dir:
+# /specific/disk1/home/mad/Galois-PQ/inputs/students/ofirc1
+
+# Inputs:
+# /specific/disk1/home/mad/Galois-PQ/inputs/
+
+
